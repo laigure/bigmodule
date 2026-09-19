@@ -1,7 +1,9 @@
 torch
-transformers>=4.51.0
-datasets>=3.0.0
+transformers>=4.56.0,<4.58.0
+datasets==3.6.0
+huggingface_hub==0.35.3
+fsspec==2025.3.0
 accelerate>=1.0.0
 peft>=0.14.0
-trl>=0.20.0
+trl>=0.23.0,<0.25.0
 bitsandbytes>=0.43.0
