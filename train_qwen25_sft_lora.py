@@ -2,6 +2,11 @@ import argparse
 import os
 from dataclasses import dataclass
 
+# AutoDL often cannot reach huggingface.co directly. Set this before importing
+# datasets/transformers so huggingface_hub reads the mirror endpoint early.
+os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+os.environ.setdefault("HF_HOME", "/root/autodl-tmp/hf_cache")
+
 import torch
 from datasets import load_dataset
 from peft import LoraConfig
@@ -90,6 +95,7 @@ def parse_args() -> TrainConfig:
 
 
 def load_messages_dataset(cfg: TrainConfig):
+    log(f"HF_ENDPOINT: {os.environ.get('HF_ENDPOINT')}")
     log(f"Loading dataset: {cfg.dataset_name}")
     dataset = load_dataset(cfg.dataset_name, split="train")
     log(f"Raw dataset size: {len(dataset)}")
