@@ -31,6 +31,10 @@ class TrainConfig:
     assistant_only_loss: bool
 
 
+def log(message: str):
+    print(f"[SFT] {message}", flush=True)
+
+
 def parse_args() -> TrainConfig:
     parser = argparse.ArgumentParser(
         description="First SFT run: Qwen2.5-7B-Instruct + no_robots + LoRA/QLoRA"
@@ -86,7 +90,9 @@ def parse_args() -> TrainConfig:
 
 
 def load_messages_dataset(cfg: TrainConfig):
+    log(f"Loading dataset: {cfg.dataset_name}")
     dataset = load_dataset(cfg.dataset_name, split="train")
+    log(f"Raw dataset size: {len(dataset)}")
 
     if "messages" not in dataset.column_names:
         raise ValueError(
@@ -95,6 +101,7 @@ def load_messages_dataset(cfg: TrainConfig):
         )
 
     keep_n = min(cfg.max_samples + cfg.eval_samples, len(dataset))
+    log(f"Shuffling and selecting {keep_n} samples")
     dataset = dataset.shuffle(seed=cfg.seed).select(range(keep_n))
 
     remove_columns = [name for name in dataset.column_names if name != "messages"]
@@ -103,12 +110,15 @@ def load_messages_dataset(cfg: TrainConfig):
 
     if cfg.eval_samples > 0 and len(dataset) > cfg.eval_samples:
         split = dataset.train_test_split(test_size=cfg.eval_samples, seed=cfg.seed)
+        log(f"Train samples: {len(split['train'])}; eval samples: {len(split['test'])}")
         return split["train"], split["test"]
 
+    log(f"Train samples: {len(dataset)}; eval disabled")
     return dataset, None
 
 
 def load_model_and_tokenizer(cfg: TrainConfig):
+    log(f"Loading tokenizer from: {cfg.model_name_or_path}")
     tokenizer = AutoTokenizer.from_pretrained(
         cfg.model_name_or_path,
         trust_remote_code=True,
@@ -119,6 +129,7 @@ def load_model_and_tokenizer(cfg: TrainConfig):
 
     quantization_config = None
     if cfg.use_4bit:
+        log("Using 4-bit QLoRA quantization")
         quantization_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
@@ -126,6 +137,7 @@ def load_model_and_tokenizer(cfg: TrainConfig):
             bnb_4bit_use_double_quant=True,
         )
 
+    log(f"Loading model from: {cfg.model_name_or_path}")
     model = AutoModelForCausalLM.from_pretrained(
         cfg.model_name_or_path,
         trust_remote_code=True,
@@ -134,6 +146,7 @@ def load_model_and_tokenizer(cfg: TrainConfig):
         quantization_config=quantization_config,
     )
     model.config.use_cache = False
+    log("Model loaded")
 
     return model, tokenizer
 
@@ -141,10 +154,12 @@ def load_model_and_tokenizer(cfg: TrainConfig):
 def main():
     cfg = parse_args()
     os.makedirs(cfg.output_dir, exist_ok=True)
+    log(f"Output dir: {cfg.output_dir}")
 
     train_dataset, eval_dataset = load_messages_dataset(cfg)
     model, tokenizer = load_model_and_tokenizer(cfg)
 
+    log("Building LoRA config")
     peft_config = LoraConfig(
         r=cfg.lora_r,
         lora_alpha=cfg.lora_alpha,
@@ -188,6 +203,7 @@ def main():
         seed=cfg.seed,
     )
 
+    log("Building SFTTrainer")
     trainer = SFTTrainer(
         model=model,
         args=training_args,
@@ -197,7 +213,9 @@ def main():
         processing_class=tokenizer,
     )
 
+    log("Starting training")
     trainer.train()
+    log("Saving adapter and tokenizer")
     trainer.save_model(cfg.output_dir)
     tokenizer.save_pretrained(cfg.output_dir)
 
